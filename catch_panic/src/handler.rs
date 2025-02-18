@@ -23,17 +23,25 @@ where
     }
 }
 
-/// `#[catch_panic]`'s default panic handler. This
-/// will rethrow all caught panics as java `RuntimeException`s
-/// with the message passed to `panic!`.
+/// `#[catch_panic]`'s default panic handler.
+/// This will rethrow all caught panics as Java exceptions.
+///
+/// If panic was caused by a JNI exception,
+/// the exception will get rethrown. Otherwise,
+/// a `RuntimeException` will be thrown with the panic payload.
 pub fn default_handler(mut env: JNIEnv, err: Box<dyn Any + Send + 'static>) {
-    let msg = match err.downcast_ref::<&'static str>() {
-        Some(s) => *s,
-        None => match err.downcast_ref::<String>() {
-            Some(s) => &s[..],
-            None => "Box<dyn Any>",
-        },
-    };
-    env.exception_clear().unwrap();
-    env.throw_new("java/lang/RuntimeException", msg).unwrap();
+    // Check if panic was caused by JNI exception
+    if let Ok(t) = env.exception_occurred() {
+        env.throw(t).unwrap();
+    } else {
+        let msg = match err.downcast_ref::<&'static str>() {
+            Some(s) => *s,
+            None => match err.downcast_ref::<String>() {
+                Some(s) => &s[..],
+                None => "Box<dyn Any>",
+            },
+        };
+
+        env.throw_new("java/lang/RuntimeException", msg).unwrap();
+    }
 }
